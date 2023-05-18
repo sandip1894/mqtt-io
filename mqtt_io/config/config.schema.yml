@@ -603,6 +603,12 @@ digital_inputs:
         schema:
           type: string
           required: yes
+      is_pulse_counter:
+        meta:
+          description: Configure this digital_input as a pulse counter.
+        type: boolean
+        required: no
+        default: false
       bouncetime:
         meta:
           description: |
@@ -630,6 +636,14 @@ digital_inputs:
         type: float
         required: no
         default: 0.1
+      interval:
+        meta:
+          description: How long to wait between checking the value of the pulse counter sensor.
+          unit: seconds
+        type: integer
+        required: no
+        default: 60
+        min: 1
       poll_when_interrupt_for:
         meta:
           description: Poll this pin when it's configured as an interrupt for another pin.

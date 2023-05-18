@@ -358,6 +358,15 @@ class MqttIo:  # pylint: disable=too-many-instance-attributes
             in_conf = self.digital_input_configs[event.input_name]
             value = event.to_value != in_conf["inverted"]
             val = in_conf["on_payload"] if value else in_conf["off_payload"]
+            is_pulse_counter = in_conf.get("is_pulse_counter")
+
+            if is_pulse_counter:
+                incr = in_conf.get("pulse_count", 0)
+                incr += 1
+                in_conf["pulse_count"] = incr
+                # return here to avoid publishing the digital_iput value itself
+                return
+
             self.mqtt_task_queue.put_nowait(
                 PriorityCoro(
                     self._mqtt_publish(
@@ -388,6 +397,7 @@ class MqttIo:  # pylint: disable=too-many-instance-attributes
 
             interrupt = in_conf.get("interrupt")
             interrupt_for = in_conf.get("interrupt_for")
+            is_pulse_counter = in_conf.get("is_pulse_counter")
 
             # Only start the poller task if this _isn't_ set up with an interrupt, or if
             # it _is_ an interrupt, but it's used for triggering remote interrupts.
@@ -397,6 +407,17 @@ class MqttIo:  # pylint: disable=too-many-instance-attributes
                 self.transient_tasks.append(
                     self.loop.create_task(
                         partial(self.digital_input_poller, gpio_module, in_conf)()
+                    )
+                )
+
+            # Start poller task for reading pulse count.
+            # TODO: Should there be an option to send on interrupt (when changed)? poll_interval None cannot be used as it has a default value
+            if is_pulse_counter:
+                # Add sensor config for the pulse counter
+                self.sensor_input_configs[in_conf["name"]] = in_conf
+                self.transient_tasks.append(
+                    self.loop.create_task(
+                        partial(self.pulse_count_poller, gpio_module, in_conf)()
                     )
                 )
 
@@ -518,7 +539,7 @@ class MqttIo:  # pylint: disable=too-many-instance-attributes
     def _init_sensor_inputs(self) -> None:
         async def publish_sensor_callback(event: SensorReadEvent) -> None:
             sens_conf = self.sensor_input_configs[event.sensor_name]
-            digits: int = sens_conf["digits"]
+            digits: int = sens_conf.get("digits", 0)
             self.mqtt_task_queue.put_nowait(
                 PriorityCoro(
                     self._mqtt_publish(
@@ -756,6 +777,24 @@ class MqttIo:  # pylint: disable=too-many-instance-attributes
             await self._handle_digital_input_value(in_conf, value, last_value)
             last_value = value
             await asyncio.sleep(in_conf["poll_interval"])
+
+    async def pulse_count_poller(
+        self, module: GenericGPIO, in_conf: ConfigType
+    ) -> None:
+        """
+        Polls a single pulse count for changes and calls the handler function when it's
+        been read.
+        """
+        while True:
+            # TODO should we protect read-modify-write?
+            value = in_conf.get("pulse_count", 0)
+
+            _LOG.info("Pulse count '%s' value changed to %i", in_conf["name"], value)
+            self.event_bus.fire(
+                # TODO change to something else, can we use SensorReadEvent?
+                SensorReadEvent(in_conf["name"], value)
+            )
+            await asyncio.sleep(in_conf["interval"])
 
     async def stream_poller(self, module: GenericStream, stream_conf: ConfigType) -> None:
         """
