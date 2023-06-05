@@ -789,7 +789,7 @@ class MqttIo:  # pylint: disable=too-many-instance-attributes
             # TODO should we protect read-modify-write?
             value = in_conf.get("pulse_count", 0)
 
-            _LOG.info("Pulse count '%s' value changed to %i", in_conf["name"], value)
+            _LOG.info("Pulse count '%s' value %i", in_conf["name"], value)
             self.event_bus.fire(
                 # TODO change to something else, can we use SensorReadEvent?
                 SensorReadEvent(in_conf["name"], value)
