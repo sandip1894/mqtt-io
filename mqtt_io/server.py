@@ -22,6 +22,8 @@ from typing import Any, Dict, List, Optional, Tuple, Type, Union, overload
 import backoff  # type: ignore
 from typing_extensions import Literal
 
+from mqtt_io.modules.sensor import gpiopc
+
 from .config import (
     get_main_schema_section,
     validate_and_normalise_config,
@@ -358,6 +360,11 @@ class MqttIo:  # pylint: disable=too-many-instance-attributes
             in_conf = self.digital_input_configs[event.input_name]
             value = event.to_value != in_conf["inverted"]
             val = in_conf["on_payload"] if value else in_conf["off_payload"]
+            is_pulse_counter = in_conf.get("is_pulse_counter")
+
+            if is_pulse_counter:
+                gpiopc.increment_pulse_count(in_conf["pin"])
+
             self.mqtt_task_queue.put_nowait(
                 PriorityCoro(
                     self._mqtt_publish(
